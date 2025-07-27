@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UPay - 支払い＆家計簿プロトタイプ</title>
+    <title>UPay QRCodeプロトタイプ</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
@@ -135,8 +135,17 @@
             const secondLapProgressAmount = Math.max(0, currentBalance - totalChargeAmountForProgressBar);
             const secondLapInitialDashoffset = circumference - (secondLapProgressAmount / totalChargeAmountForProgressBar) * circumference;
 
-            const firstLapStrokeColor = currentBalance <= 100 ? '#EF4444' : '#22C55E';
-            const secondLapStrokeColor = '#3B82F6';
+            // 段階的な色変化のロジック
+            let firstLapStrokeColor;
+            if (currentBalance <= 100) {
+                firstLapStrokeColor = '#EF4444'; // 赤
+            } else if (currentBalance <= 300) {
+                firstLapStrokeColor = '#FF8C00'; // オレンジ
+            } else {
+                firstLapStrokeColor = '#22C55E'; // 緑
+            }
+            const secondLapStrokeColor = '#3B82F6'; // 2周目の色 (青)
+
 
             return `
                 <div class="relative flex items-center justify-center" style="width: ${size}px; height: ${size}px;">
@@ -229,7 +238,6 @@
 
             previousBalance = currentBalance; 
             
-            // 今月の支出の初期値を計算
             const currentMonth = new Date().getMonth();
             const currentYear = new Date().getFullYear();
             const currentMonthTotal = dummyExpenses
@@ -238,7 +246,7 @@
                     return expenseDate.getMonth() === currentMonth && expenseDate.getFullYear() === currentYear;
                 })
                 .reduce((sum, expense) => sum + expense.amount, 0);
-            previousMonthlyExpense = currentMonthTotal; // 初期化時に現在の月間支出を設定
+            previousMonthlyExpense = currentMonthTotal; 
 
             document.getElementById('showLedgerBtn').addEventListener('click', () => {
                 currentView = 'ledger';
@@ -272,7 +280,15 @@
             const secondLapProgressAmount = Math.max(0, currentBalance - initialTotalChargeAmount);
             const secondLapTargetDashoffset = circumference - (secondLapProgressAmount / initialTotalChargeAmount) * circumference;
 
-            const firstLapStrokeColor = currentBalance <= 100 && currentBalance > 0 ? '#EF4444' : '#22C55E'; 
+            // 段階的な色変化のロジック
+            let firstLapStrokeColor;
+            if (currentBalance <= 100) {
+                firstLapStrokeColor = '#EF4444'; // 赤
+            } else if (currentBalance <= 300) {
+                firstLapStrokeColor = '#FF8C00'; // オレンジ
+            } else {
+                firstLapStrokeColor = '#22C55E'; // 緑
+            }
             const secondLapStrokeColor = '#3B82F6';
 
             const balanceChange = Math.abs(currentBalance - previousBalance);
@@ -352,7 +368,7 @@
             }
 
             previousBalance = currentBalance;
-            previousMonthlyExpense = currentMonthTotal; // 月間支出も更新
+            previousMonthlyExpense = currentMonthTotal; 
         }
 
         function renderLedgerDisplay() {
