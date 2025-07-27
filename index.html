@@ -75,7 +75,6 @@
             '水': 60, 'お茶': 80, 'ジュース': 80, 'コーヒー': 40, 'カップ麺': 120, 'アイス': 100,
         };
 
-        // 初期支出データ (リセット時に使用)
         const initialDummyExpenses = [
             { id: 1, date: '2025-07-28', amount: productPrices['水'], category: '水' },
             { id: 2, date: '2025-07-28', amount: productPrices['お茶'], category: 'お茶' },
@@ -84,7 +83,7 @@
             { id: 5, date: '2025-07-28', amount: productPrices['カップ麺'], category: 'カップ麺' },
             { id: 6, date: '2025-07-28', amount: productPrices['アイス'], category: 'アイス' },
         ];
-        let dummyExpenses = [...initialDummyExpenses]; // 実際の支出データはコピーから開始
+        let dummyExpenses = [...initialDummyExpenses];
 
         const initialTotalChargeAmount = 1000; 
         let currentTotalCharged = initialTotalChargeAmount; 
@@ -104,7 +103,26 @@
         let lowBalanceWarningText;
         let monthlyExpenseButtonSpan;
 
-        let previousBalance = 0;
+        let previousBalance = 0; // 前回の残高を記録
+        let previousMonthlyExpense = 0; // 前回の月間支出を記録
+
+        // 数値を滑らかにアニメーションさせる関数
+        function animateNumberChange(element, startValue, endValue, duration, prefix = '') {
+            let startTime = null;
+            const range = endValue - startValue;
+
+            function animate(currentTime) {
+                if (!startTime) startTime = currentTime;
+                const progress = Math.min((currentTime - startTime) / duration, 1);
+                const currentValue = startValue + range * progress;
+                element.textContent = `${prefix}¥${Math.round(currentValue).toLocaleString()}`;
+
+                if (progress < 1) {
+                    requestAnimationFrame(animate);
+                }
+            }
+            requestAnimationFrame(animate);
+        }
 
         // 円形プログレスバーのHTMLを生成
         function createCircularProgressBarHtml(currentBalance, totalChargeAmountForProgressBar, size, strokeWidth, innerContentHtml) {
@@ -210,6 +228,17 @@
             monthlyExpenseButtonSpan = document.getElementById('monthlyExpenseButtonSpan');
 
             previousBalance = currentBalance; 
+            
+            // 今月の支出の初期値を計算
+            const currentMonth = new Date().getMonth();
+            const currentYear = new Date().getFullYear();
+            const currentMonthTotal = dummyExpenses
+                .filter(expense => {
+                    const expenseDate = new Date(expense.date);
+                    return expenseDate.getMonth() === currentMonth && expenseDate.getFullYear() === currentYear;
+                })
+                .reduce((sum, expense) => sum + expense.amount, 0);
+            previousMonthlyExpense = currentMonthTotal; // 初期化時に現在の月間支出を設定
 
             document.getElementById('showLedgerBtn').addEventListener('click', () => {
                 currentView = 'ledger';
@@ -222,8 +251,13 @@
             const totalSpent = dummyExpenses.reduce((sum, expense) => sum + expense.amount, 0);
             const currentBalance = Math.max(0, currentTotalCharged - totalSpent);
 
+            const currentMonth = new Date().getMonth();
+            const currentYear = new Date().getFullYear();
             const currentMonthTotal = dummyExpenses
-                .filter(expense => new Date(expense.date).getMonth() === new Date().getMonth())
+                .filter(expense => {
+                    const expenseDate = new Date(expense.date);
+                    return expenseDate.getMonth() === currentMonth && expenseDate.getFullYear() === currentYear;
+                })
                 .reduce((sum, expense) => sum + expense.amount, 0);
 
             const size = 350;
@@ -242,7 +276,7 @@
             const secondLapStrokeColor = '#3B82F6';
 
             const balanceChange = Math.abs(currentBalance - previousBalance);
-            const animationDuration = Math.max(200, Math.min(2000, balanceChange * 0.7)); // 1円あたり0.7ms, 最低200ms, 最大2000ms
+            const animationDuration = Math.max(200, Math.min(2000, balanceChange * 0.7));
 
             const transitionStyle = `stroke-dashoffset ${animationDuration}ms ease-out, stroke ${animationDuration}ms ease-out`;
             const transitionStyleSecondLap = `stroke-dashoffset ${animationDuration}ms ease-out, opacity ${animationDuration}ms ease-out, visibility ${animationDuration}ms ease-out`;
@@ -294,8 +328,9 @@
                 }
             }
             
+            // 残高テキストのアニメーション
             if (balanceAmountText) {
-                balanceAmountText.textContent = `¥${currentBalance.toLocaleString()}`;
+                animateNumberChange(balanceAmountText, previousBalance, currentBalance, animationDuration);
             }
 
             if (lowBalanceWarningText) {
@@ -311,11 +346,13 @@
                 }
             }
 
+            // 今月の支出ボタンのテキストアニメーション
             if (monthlyExpenseButtonSpan) {
-                monthlyExpenseButtonSpan.textContent = `今月の支出: ¥${currentMonthTotal.toLocaleString()}`;
+                animateNumberChange(monthlyExpenseButtonSpan, previousMonthlyExpense, currentMonthTotal, animationDuration, '今月の支出: ');
             }
 
             previousBalance = currentBalance;
+            previousMonthlyExpense = currentMonthTotal; // 月間支出も更新
         }
 
         function renderLedgerDisplay() {
@@ -495,15 +532,14 @@
                 };
             }
 
-            // リセットボタンのイベントリスナー
             const resetSimulationBtn = document.getElementById('resetSimulationBtn');
             if (resetSimulationBtn) {
                 resetSimulationBtn.onclick = () => {
-                    dummyExpenses = [...initialDummyExpenses]; // 初期状態にリセット
-                    currentTotalCharged = initialTotalChargeAmount; // 初期チャージ額にリセット
-                    paymentMessageElement.textContent = ''; // メッセージをクリア
-                    chargeMessageElement.textContent = ''; // メッセージをクリア
-                    renderApp(); // UIを再描画
+                    dummyExpenses = [...initialDummyExpenses];
+                    currentTotalCharged = initialTotalChargeAmount;
+                    paymentMessageElement.textContent = '';
+                    chargeMessageElement.textContent = '';
+                    renderApp();
                 };
             }
         }
