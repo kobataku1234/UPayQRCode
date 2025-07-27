@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UPay - 支払い＆家計簿プロトタイプ</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        input[type="number"]::-webkit-outer-spin-button,
+        input[type="number"]::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        input[type="number"] {
+            -moz-appearance: textfield;
+        }
+        .transition-opacity-visibility {
+            transition: opacity 0.7s ease-out, visibility 0.7s ease-out;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-blue-700 to-teal-500 flex flex-col items-center justify-center p-4">
+    <div id="app" class="w-full max-w-sm mb-8">
+        <!-- コンテンツはJavaScriptで動的にレンダリングされます -->
+    </div>
+
+    <div id="simulation-controls" class="bg-white p-6 rounded-3xl shadow-2xl w-full max-w-sm mx-auto mt-8">
+        <h3 class="text-xl font-bold text-gray-800 mb-4 text-center">支払い/チャージシミュレーション</h3>
+        
+        <div class="mb-6 pb-6 border-b border-gray-200">
+            <h4 class="text-lg font-semibold text-gray-700 mb-3">支払いシミュレーション</h4>
+            <div class="mb-4">
+                <label for="productSelect" class="block text-gray-700 text-sm font-bold mb-2">商品を選択:</label>
+                <select id="productSelect" class="w-full p-3 border border-gray-300 rounded-lg text-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                    <option value="水">水 (¥60)</option>
+                    <option value="お茶">お茶 (¥80)</option>
+                    <option value="ジュース">ジュース (¥80)</option>
+                    <option value="コーヒー">コーヒー (¥40)</option>
+                    <option value="カップ麺">カップ麺 (¥120)</option>
+                    <option value="アイス">アイス (¥100)</option>
+                </select>
+            </div>
+            <button id="simulatePaymentBtn" class="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-full shadow-md transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-75">
+                支払いを実行
+            </button>
+            <p id="paymentMessage" class="text-center text-sm mt-3 text-gray-600"></p>
+        </div>
+
+        <div>
+            <h4 class="text-lg font-semibold text-gray-700 mb-3">チャージシミュレーション</h4>
+            <div class="mb-4">
+                <label for="chargeAmountInput" class="block text-gray-700 text-sm font-bold mb-2">チャージ金額を入力:</label>
+                <input type="number" id="chargeAmountInput" placeholder="チャージ金額 (例: 1000)" class="w-full p-3 border border-gray-300 rounded-lg text-center text-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+            </div>
+            <button id="simulateChargeBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-full shadow-md transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75">
+                チャージを実行
+            </button>
+            <p id="chargeMessage" class="text-center text-sm mt-3 text-gray-600"></p>
+        </div>
+
+        <button id="resetSimulationBtn" class="w-full bg-gray-400 hover:bg-gray-500 text-white font-bold py-3 px-6 rounded-full shadow-md transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-gray-300 focus:ring-opacity-75 mt-6">
+            シミュレーションをリセット
+        </button>
+    </div>
+
+    <script>
+        Chart.register(Chart.ArcElement, Chart.Tooltip, Chart.Legend);
+
+        const productPrices = {
+            '水': 60, 'お茶': 80, 'ジュース': 80, 'コーヒー': 40, 'カップ麺': 120, 'アイス': 100,
+        };
+
+        // 初期支出データ (リセット時に使用)
+        const initialDummyExpenses = [
+            { id: 1, date: '2025-07-28', amount: productPrices['水'], category: '水' },
+            { id: 2, date: '2025-07-28', amount: productPrices['お茶'], category: 'お茶' },
+            { id: 3, date: '2025-07-28', amount: productPrices['ジュース'], category: 'ジュース' },
+            { id: 4, date: '2025-07-28', amount: productPrices['コーヒー'], category: 'コーヒー' },
+            { id: 5, date: '2025-07-28', amount: productPrices['カップ麺'], category: 'カップ麺' },
+            { id: 6, date: '2025-07-28', amount: productPrices['アイス'], category: 'アイス' },
+        ];
+        let dummyExpenses = [...initialDummyExpenses]; // 実際の支出データはコピーから開始
+
+        const initialTotalChargeAmount = 1000; 
+        let currentTotalCharged = initialTotalChargeAmount; 
+
+        const categoryColors = {
+            '水': '#ADD8E6', 'お茶': '#90EE90', 'ジュース': '#FFD700', 'コーヒー': '#A0522D',
+            'カップ麺': '#FF6347', 'アイス': '#FFB6C1', 'その他': '#CCCCCC',
+        };
+
+        const appDiv = document.getElementById('app');
+        let currentView = 'qr'; 
+        let myChart = null; 
+
+        let progressBarCircleFirstLap;
+        let progressBarCircleSecondLap;
+        let balanceAmountText;
+        let lowBalanceWarningText;
+        let monthlyExpenseButtonSpan;
+
+        let previousBalance = 0;
+
+        // 円形プログレスバーのHTMLを生成
+        function createCircularProgressBarHtml(currentBalance, totalChargeAmountForProgressBar, size, strokeWidth, innerContentHtml) {
+            const radius = (size - strokeWidth) / 2;
+            const circumference = radius * 2 * Math.PI;
+            
+            const firstLapProgressAmount = Math.min(currentBalance, totalChargeAmountForProgressBar);
+            const firstLapInitialDashoffset = circumference - (firstLapProgressAmount / totalChargeAmountForProgressBar) * circumference;
+
+            const secondLapProgressAmount = Math.max(0, currentBalance - totalChargeAmountForProgressBar);
+            const secondLapInitialDashoffset = circumference - (secondLapProgressAmount / totalChargeAmountForProgressBar) * circumference;
+
+            const firstLapStrokeColor = currentBalance <= 100 ? '#EF4444' : '#22C55E';
+            const secondLapStrokeColor = '#3B82F6';
+
+            return `
+                <div class="relative flex items-center justify-center" style="width: ${size}px; height: ${size}px;">
+                    <svg class="transform -rotate-90" width="${size}" height="${size}">
+                        <circle
+                            stroke="#E5E7EB"
+                            fill="transparent"
+                            stroke-width="${strokeWidth}"
+                            r="${radius}"
+                            cx="${size / 2}"
+                            cy="${size / 2}"
+                            opacity="0.5"
+                        />
+                        <circle
+                            id="progressBarCircleFirstLap"
+                            stroke="${firstLapStrokeColor}"
+                            fill="transparent"
+                            stroke-width="${strokeWidth}"
+                            stroke-dasharray="${circumference}"
+                            stroke-dashoffset="${firstLapInitialDashoffset}"
+                            r="${radius}"
+                            cx="${size / 2}"
+                            cy="${size / 2}"
+                            stroke-linecap="round"
+                            class="transition-all duration-700 ease-out"
+                        />
+                        <circle
+                            id="progressBarCircleSecondLap"
+                            stroke="${secondLapStrokeColor}"
+                            fill="transparent"
+                            stroke-width="${strokeWidth}"
+                            stroke-dasharray="${circumference}"
+                            stroke-dashoffset="${secondLapInitialDashoffset}"
+                            r="${radius}"
+                            cx="${size / 2}"
+                            cy="${size / 2}"
+                            stroke-linecap="round"
+                            class="transition-all duration-700 ease-out transition-opacity-visibility"
+                            style="opacity: ${currentBalance > totalChargeAmountForProgressBar ? '1' : '0'}; visibility: ${currentBalance > totalChargeAmountForProgressBar ? 'visible' : 'hidden'};"
+                        />
+                    </svg>
+                    <div class="absolute flex flex-col items-center justify-center text-center w-full h-full">
+                        ${innerContentHtml}
+                    </div>
+                </div>
+            `;
+        }
+
+        // QRコード画面のレンダリングとDOM参照の取得
+        function renderQrDisplay() { 
+            const totalSpent = dummyExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+            const currentBalance = Math.max(0, currentTotalCharged - totalSpent); 
+
+            const qrAndNameContent = `
+                <h2 class="text-2xl font-bold text-gray-800 mb-4">Takumi Kobayashi</h2>
+                <img
+                    src="https://upload.wikimedia.org/wikipedia/commons/d/d0/QR_code_for_mobile_English_Wikipedia.svg"
+                    alt="Sample QR Code"
+                    class="w-48 h-48 rounded-lg"
+                />
+            `;
+
+            appDiv.innerHTML = `
+                <div class="relative flex flex-col items-center justify-center p-6 bg-white rounded-3xl shadow-2xl w-full max-w-sm mx-auto overflow-hidden min-h-[500px]">
+                    <div class="relative z-10 flex flex-col items-center w-full h-full justify-around py-4">
+                        ${createCircularProgressBarHtml(currentBalance, initialTotalChargeAmount, 350, 20, qrAndNameContent)}
+                        
+                        <div class="mb-6 flex flex-col items-center mt-auto">
+                            <h3 class="text-lg font-semibold text-gray-700 mb-2">チャージ残高</h3>
+                            <p id="balanceAmountText" class="text-2xl font-bold text-gray-800">
+                                ¥${currentBalance.toLocaleString()}
+                            </p>
+                            <p id="lowBalanceWarningText" class="text-red-500 text-sm font-medium mt-1"></p>
+                        </div>
+
+                        <button id="showLedgerBtn"
+                            class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-full shadow-md transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-75 mt-auto"
+                        >
+                            <span id="monthlyExpenseButtonSpan" class="text-lg">今月の支出: ¥0</span>
+                            <span class="block text-sm opacity-90">タップで詳細を見る</span>
+                        </button>
+                    </div>
+                </div>
+            `;
+            progressBarCircleFirstLap = document.getElementById('progressBarCircleFirstLap');
+            progressBarCircleSecondLap = document.getElementById('progressBarCircleSecondLap');
+            balanceAmountText = document.getElementById('balanceAmountText');
+            lowBalanceWarningText = document.getElementById('lowBalanceWarningText');
+            monthlyExpenseButtonSpan = document.getElementById('monthlyExpenseButtonSpan');
+
+            previousBalance = currentBalance; 
+
+            document.getElementById('showLedgerBtn').addEventListener('click', () => {
+                currentView = 'ledger';
+                renderApp();
+            });
+        }
+
+        // QRコード画面の動的コンテンツ更新
+        function updateQrDisplayContent() {
+            const totalSpent = dummyExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+            const currentBalance = Math.max(0, currentTotalCharged - totalSpent);
+
+            const currentMonthTotal = dummyExpenses
+                .filter(expense => new Date(expense.date).getMonth() === new Date().getMonth())
+                .reduce((sum, expense) => sum + expense.amount, 0);
+
+            const size = 350;
+            const strokeWidth = 20;
+            const radius = (size - strokeWidth) / 2;
+            const circumference = radius * 2 * Math.PI;
+
+            // プログレスバーの計算
+            const firstLapProgressAmount = Math.min(currentBalance, initialTotalChargeAmount);
+            const firstLapTargetDashoffset = circumference - (firstLapProgressAmount / initialTotalChargeAmount) * circumference;
+
+            const secondLapProgressAmount = Math.max(0, currentBalance - initialTotalChargeAmount);
+            const secondLapTargetDashoffset = circumference - (secondLapProgressAmount / initialTotalChargeAmount) * circumference;
+
+            const firstLapStrokeColor = currentBalance <= 100 && currentBalance > 0 ? '#EF4444' : '#22C55E'; 
+            const secondLapStrokeColor = '#3B82F6';
+
+            const balanceChange = Math.abs(currentBalance - previousBalance);
+            const animationDuration = Math.max(200, Math.min(2000, balanceChange * 0.7)); // 1円あたり0.7ms, 最低200ms, 最大2000ms
+
+            const transitionStyle = `stroke-dashoffset ${animationDuration}ms ease-out, stroke ${animationDuration}ms ease-out`;
+            const transitionStyleSecondLap = `stroke-dashoffset ${animationDuration}ms ease-out, opacity ${animationDuration}ms ease-out, visibility ${animationDuration}ms ease-out`;
+
+
+            if (progressBarCircleFirstLap && progressBarCircleSecondLap) {
+                progressBarCircleFirstLap.style.transition = transitionStyle;
+                progressBarCircleSecondLap.style.transition = transitionStyleSecondLap;
+
+                progressBarCircleFirstLap.setAttribute('stroke', firstLapStrokeColor);
+
+                const isCrossingUpwards = previousBalance <= initialTotalChargeAmount && currentBalance > initialTotalChargeAmount;
+                const isCrossingDownwards = previousBalance > initialTotalChargeAmount && currentBalance <= initialTotalChargeAmount;
+
+                if (currentBalance > initialTotalChargeAmount) {
+                    progressBarCircleFirstLap.style.strokeDashoffset = 0; 
+
+                    if (isCrossingUpwards) {
+                        setTimeout(() => {
+                            if (progressBarCircleSecondLap) {
+                                progressBarCircleSecondLap.style.opacity = '1';
+                                progressBarCircleSecondLap.style.visibility = 'visible';
+                                progressBarCircleSecondLap.setAttribute('stroke', secondLapStrokeColor);
+                                progressBarCircleSecondLap.style.strokeDashoffset = secondLapTargetDashoffset;
+                            }
+                        }, animationDuration); 
+                    } else { 
+                        progressBarCircleSecondLap.style.opacity = '1';
+                        progressBarCircleSecondLap.style.visibility = 'visible';
+                        progressBarCircleSecondLap.setAttribute('stroke', secondLapStrokeColor);
+                        progressBarCircleSecondLap.style.strokeDashoffset = secondLapTargetDashoffset;
+                    }
+                } else { 
+                    progressBarCircleFirstLap.style.strokeDashoffset = firstLapTargetDashoffset;
+
+                    if (isCrossingDownwards) {
+                        progressBarCircleSecondLap.style.opacity = '0';
+                        progressBarCircleSecondLap.style.visibility = 'hidden';
+                        setTimeout(() => {
+                            if (progressBarCircleSecondLap) {
+                                progressBarCircleSecondLap.style.strokeDashoffset = circumference;
+                            }
+                        }, animationDuration); 
+                    } else { 
+                        progressBarCircleSecondLap.style.opacity = '0';
+                        progressBarCircleSecondLap.style.visibility = 'hidden';
+                        progressBarCircleSecondLap.style.strokeDashoffset = circumference; 
+                    }
+                }
+            }
+            
+            if (balanceAmountText) {
+                balanceAmountText.textContent = `¥${currentBalance.toLocaleString()}`;
+            }
+
+            if (lowBalanceWarningText) {
+                if (currentBalance <= 100 && currentBalance > 0) { 
+                    lowBalanceWarningText.textContent = '残高が少なくなっています！';
+                    lowBalanceWarningText.style.color = 'red';
+                } else if (currentBalance === 0) { 
+                    lowBalanceWarningText.textContent = '残高がありません！';
+                    lowBalanceWarningText.style.color = 'red';
+                }
+                else {
+                    lowBalanceWarningText.textContent = '';
+                }
+            }
+
+            if (monthlyExpenseButtonSpan) {
+                monthlyExpenseButtonSpan.textContent = `今月の支出: ¥${currentMonthTotal.toLocaleString()}`;
+            }
+
+            previousBalance = currentBalance;
+        }
+
+        function renderLedgerDisplay() {
+            const currentMonth = new Date().getMonth();
+            const currentYear = new Date().getFullYear();
+
+            const monthlyExpenses = dummyExpenses.filter(expense => {
+                const expenseDate = new Date(expense.date);
+                return expenseDate.getMonth() === currentMonth && expenseDate.getFullYear() === currentYear;
+            });
+
+            const totalMonthlyExpense = monthlyExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+
+            const categoryData = monthlyExpenses.reduce((acc, expense) => {
+                acc[expense.category] = (acc[expense.category] || 0) + expense.amount;
+                return acc;
+            }, {});
+
+            const chartLabels = Object.keys(categoryData);
+            const chartValues = Object.values(categoryData);
+            const chartBackgroundColors = Object.keys(categoryData).map(category => categoryColors[category] || '#CCCCCC');
+
+            const expenseListHtml = monthlyExpenses.length === 0 ?
+                `<p class="text-gray-500 text-center">まだ支出がありません。</p>` :
+                `<ul class="space-y-3">` +
+                monthlyExpenses.map(expense => `
+                    <li class="flex justify-between items-center p-3 bg-white rounded-lg shadow-sm border border-gray-200">
+                        <div>
+                            <p class="text-gray-800 font-medium">${expense.category}</p>
+                            <p class="text-gray-500 text-sm">${expense.date}</p>
+                        </div>
+                        <p class="text-lg font-bold text-red-600">¥${expense.amount.toLocaleString()}</p>
+                    </li>
+                `).join('') + `</ul>`;
+
+            appDiv.innerHTML = `
+                <div class="flex flex-col p-6 bg-white rounded-3xl shadow-2xl w-full max-w-sm mx-auto">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-2 text-center">今月の支出</h2>
+                    <p class="text-lg font-bold text-gray-800 mb-6 text-center">合計: ¥${totalMonthlyExpense.toLocaleString()}</p>
+
+                    <div class="mb-8 p-4 bg-gray-50 rounded-xl shadow-inner">
+                        <h3 class="text-xl font-semibold text-gray-700 mb-4 text-center">カテゴリ別内訳</h3>
+                        <div class="w-full max-w-xs mx-auto">
+                            <canvas id="myPieChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="mb-8 p-4 bg-gray-50 rounded-xl shadow-inner max-h-64 overflow-y-auto">
+                        <h3 class="text-xl font-semibold text-gray-700 mb-4 text-center">履歴</h3>
+                        ${expenseListHtml}
+                    </div>
+
+                    <button id="backToQrBtn"
+                        class="w-full bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-6 rounded-full shadow-md transition duration-300 ease-in-out transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-75"
+                    >
+                        QRコード画面に戻る
+                    </button>
+                </div>
+            `;
+
+            document.getElementById('backToQrBtn').addEventListener('click', () => {
+                currentView = 'qr';
+                if (myChart) {
+                    myChart.destroy();
+                    myChart = null;
+                }
+                renderApp();
+            });
+
+            const ctx = document.getElementById('myPieChart').getContext('2d');
+            myChart = new Chart(ctx, {
+                type: 'pie',
+                data: {
+                    labels: chartLabels,
+                    datasets: [{
+                        data: chartValues,
+                        backgroundColor: chartBackgroundColors,
+                        hoverOffset: 4
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.label || '';
+                                    if (label) {
+                                        label += ': ';
+                                    }
+                                    if (context.parsed !== null) {
+                                        label += '¥' + context.parsed.toLocaleString();
+                                    }
+                                    return label;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderApp() {
+            if (currentView === 'qr') {
+                renderQrDisplay(); 
+                updateQrDisplayContent();
+                attachSimulationListeners();
+            } else {
+                renderLedgerDisplay();
+            }
+        }
+
+        function attachSimulationListeners() {
+            const simulatePaymentBtn = document.getElementById('simulatePaymentBtn');
+            const productSelect = document.getElementById('productSelect');
+            const paymentMessageElement = document.getElementById('paymentMessage');
+
+            const simulateChargeBtn = document.getElementById('simulateChargeBtn');
+            const chargeAmountInput = document.getElementById('chargeAmountInput');
+            const chargeMessageElement = document.getElementById('chargeMessage');
+
+            if (simulatePaymentBtn && productSelect && paymentMessageElement) {
+                simulatePaymentBtn.onclick = () => {
+                    const selectedCategory = productSelect.value;
+                    const amount = productPrices[selectedCategory];
+
+                    const totalSpent = dummyExpenses.reduce((sum, expense) => sum + expense.amount, 0);
+                    const currentBalance = Math.max(0, currentTotalCharged - totalSpent);
+
+                    if (isNaN(amount) || amount <= 0) {
+                        paymentMessageElement.textContent = '商品を選択してください。';
+                        paymentMessageElement.style.color = 'red';
+                        return;
+                    }
+
+                    if (amount > currentBalance) {
+                        paymentMessageElement.textContent = `残高が不足しています (¥${amount.toLocaleString()}必要)。`;
+                        paymentMessageElement.style.color = 'red';
+                        return;
+                    }
+
+                    dummyExpenses.push({
+                        id: dummyExpenses.length + 1, 
+                        date: new Date().toISOString().slice(0, 10), 
+                        amount: amount,
+                        category: selectedCategory
+                    });
+
+                    paymentMessageElement.textContent = `¥${amount.toLocaleString()} (${selectedCategory}) 支払いが完了しました！`;
+                    paymentMessageElement.style.color = 'green';
+                    
+                    updateQrDisplayContent(); 
+                };
+            }
+
+            if (simulateChargeBtn && chargeAmountInput && chargeMessageElement) {
+                simulateChargeBtn.onclick = () => {
+                    const amount = parseInt(chargeAmountInput.value, 10);
+
+                    if (isNaN(amount) || amount <= 0) {
+                        chargeMessageElement.textContent = '有効なチャージ金額を入力してください。';
+                        chargeMessageElement.style.color = 'red';
+                        return;
+                    }
+
+                    currentTotalCharged += amount; 
+                    
+                    chargeMessageElement.textContent = `¥${amount.toLocaleString()} チャージが完了しました！`;
+                    chargeMessageElement.style.color = 'green';
+                    chargeAmountInput.value = ''; 
+
+                    updateQrDisplayContent(); 
+                };
+            }
+
+            // リセットボタンのイベントリスナー
+            const resetSimulationBtn = document.getElementById('resetSimulationBtn');
+            if (resetSimulationBtn) {
+                resetSimulationBtn.onclick = () => {
+                    dummyExpenses = [...initialDummyExpenses]; // 初期状態にリセット
+                    currentTotalCharged = initialTotalChargeAmount; // 初期チャージ額にリセット
+                    paymentMessageElement.textContent = ''; // メッセージをクリア
+                    chargeMessageElement.textContent = ''; // メッセージをクリア
+                    renderApp(); // UIを再描画
+                };
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', renderApp);
+    </script>
+</body>
+</html>
